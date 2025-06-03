@@ -133,6 +133,7 @@
         let collectedLetters = [];
         let lastTime = 0;
         let frameCount = 0;
+        let nextLetterIndex = 0; // Для правильного порядка букв
         
         // Izba (player) properties - simplified
         const izba = {
@@ -142,7 +143,7 @@
             height: 0,
             velocity: 0,
             gravity: 0.3, // Reduced gravity for easier gameplay
-            jumpStrength: -5, // Reduced jump strength
+            jumpStrength: -8, // Reduced jump strength
             legAngle: 0,
             legDirection: 1
         };
@@ -158,7 +159,7 @@
         // Pipes properties - simplified
         const pipes = [];
         const pipeWidth = canvas.width * 0.2;
-        const pipeGap = canvas.height * 0.3; // Larger gap for easier gameplay
+        const pipeGap = canvas.height * 0.3; // 30% высоты экрана
         const pipeSpeed = canvas.width * 0.005; // Slower speed
         let pipeTimer = 0;
         const pipeInterval = 2000; // Less frequent pipes
@@ -186,6 +187,7 @@
             gameOverScreen.style.display = 'none';
             score = 0;
             collectedLetters = [];
+            nextLetterIndex = 0;
             pipes.length = 0;
             initIzba();
             izba.velocity = 0;
@@ -386,6 +388,7 @@
                         pipe.letterCollected = true;
                         collectedLetters.push(pipe.letter);
                         score++;
+                        nextLetterIndex = (nextLetterIndex + 1) % message.length;
                     }
                 }
             }
@@ -397,9 +400,8 @@
             const topHeight = minHeight + Math.random() * (maxHeight - minHeight);
             const bottomY = topHeight + pipeGap;
             
-            // Determine which letter to show
-            const letterIndex = pipes.length % message.length;
-            const letter = message[letterIndex];
+            // Get next letter in sequence
+            const letter = message[nextLetterIndex];
             
             pipes.push({
                 x: canvas.width,
