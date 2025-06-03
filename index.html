@@ -2,25 +2,39 @@
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Flappy Izba</title>
     <style>
-        body {
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        body {
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             background-color: #222;
             font-family: Arial, sans-serif;
+            overflow: hidden;
+            touch-action: none;
         }
         #game-container {
             position: relative;
+            width: 100%;
+            max-width: 400px;
         }
         #game-canvas {
+            width: 100%;
+            height: auto;
+            display: block;
             border: 4px solid #5a3e2b;
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
             background-color: #1a2a1a;
+            touch-action: none;
         }
         #start-screen, #game-over {
             position: absolute;
@@ -34,40 +48,50 @@
             align-items: center;
             background-color: rgba(0, 0, 0, 0.7);
             color: white;
+            text-align: center;
+            padding: 20px;
         }
         #game-over {
             display: none;
         }
         button {
             margin-top: 20px;
-            padding: 10px 20px;
+            padding: 12px 24px;
             font-size: 18px;
             background-color: #5a3e2b;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            min-width: 150px;
         }
-        button:hover {
+        button:active {
             background-color: #7a5e4b;
+            transform: scale(0.98);
         }
         h1 {
-            font-size: 36px;
+            font-size: 28px;
             margin-bottom: 10px;
             text-shadow: 2px 2px 4px #000;
         }
         p {
-            font-size: 18px;
+            font-size: 16px;
             margin-bottom: 20px;
+            line-height: 1.4;
+        }
+        @media (max-height: 600px) {
+            h1 { font-size: 24px; }
+            p { font-size: 14px; }
+            button { padding: 10px 20px; font-size: 16px; }
         }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <canvas id="game-canvas" width="400" height="600"></canvas>
+        <canvas id="game-canvas"></canvas>
         <div id="start-screen">
             <h1>Flappy Izba</h1>
-            <p>Управляйте избушкой на курьих ножках<br>и собирайте послание!</p>
+            <p>Коснитесь экрана, чтобы подпрыгнуть<br>Соберите все буквы!</p>
             <button id="start-button">Начать игру</button>
         </div>
         <div id="game-over">
@@ -87,50 +111,72 @@
         const restartButton = document.getElementById('restart-button');
         const scoreText = document.getElementById('score-text');
         
+        // Adjust canvas size for device
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            const width = Math.min(400, window.innerWidth - 20);
+            const height = width * 1.5; // 3:2 aspect ratio
+            
+            canvas.width = width;
+            canvas.height = height;
+            container.style.maxWidth = width + 'px';
+        }
+        
+        // Initialize canvas size
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
         // Game state
         let gameRunning = false;
         let score = 0;
-        let highScore = 0;
         const message = "жду вас по адресу";
         let collectedLetters = [];
+        let lastTime = 0;
+        let frameCount = 0;
         
-        // Izba (player) properties
+        // Izba (player) properties - simplified
         const izba = {
-            x: 100,
-            y: 300,
-            width: 60,
-            height: 50,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
             velocity: 0,
-            gravity: 0.5,
-            jumpStrength: -10,
-            legs: [
-                {x: 0, y: 0, length: 20, angle: 0},
-                {x: 0, y: 0, length: 20, angle: 0},
-                {x: 0, y: 0, length: 20, angle: 0},
-                {x: 0, y: 0, length: 20, angle: 0}
-            ],
+            gravity: 0.3, // Reduced gravity for easier gameplay
+            jumpStrength: -8, // Reduced jump strength
             legAngle: 0,
             legDirection: 1
         };
         
-        // Pipes properties
+        // Initialize izba size based on canvas
+        function initIzba() {
+            izba.x = canvas.width * 0.2;
+            izba.y = canvas.height / 2;
+            izba.width = canvas.width * 0.15;
+            izba.height = izba.width * 0.8;
+        }
+        
+        // Pipes properties - simplified
         const pipes = [];
-        const pipeWidth = 80;
-        const pipeGap = 150;
-        const pipeSpeed = 2;
+        const pipeWidth = canvas.width * 0.2;
+        const pipeGap = canvas.height * 0.25; // Larger gap for easier gameplay
+        const pipeSpeed = canvas.width * 0.005; // Slower speed
         let pipeTimer = 0;
-        const pipeInterval = 1500;
+        const pipeInterval = 2000; // Less frequent pipes
         
         // Background elements
         const trees = [];
-        for (let i = 0; i < 20; i++) {
-            trees.push({
-                x: Math.random() * canvas.width,
-                y: Math.random() * canvas.height,
-                width: 30 + Math.random() * 50,
-                height: 80 + Math.random() * 120,
-                dark: Math.random() > 0.5
-            });
+        
+        function initTrees() {
+            trees.length = 0;
+            for (let i = 0; i < 15; i++) {
+                trees.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    width: canvas.width * (0.05 + Math.random() * 0.1),
+                    height: canvas.height * (0.1 + Math.random() * 0.2),
+                    dark: Math.random() > 0.5
+                });
+            }
         }
         
         // Game functions
@@ -141,48 +187,43 @@
             score = 0;
             collectedLetters = [];
             pipes.length = 0;
-            izba.y = 300;
+            initIzba();
             izba.velocity = 0;
             pipeTimer = 0;
+            initTrees();
+            lastTime = performance.now();
+            frameCount = 0;
             animate();
         }
         
         function endGame() {
             gameRunning = false;
-            scoreText.textContent = `Вы собрали: ${collectedLetters.join('')}`;
+            scoreText.textContent = `Вы собрали: ${collectedLetters.join('') || 'ничего'}`;
             gameOverScreen.style.display = 'flex';
         }
         
         function drawIzba() {
-            // Update leg angles
-            izba.legAngle += 0.1 * izba.legDirection;
-            if (Math.abs(izba.legAngle) > 0.5) {
+            // Update leg angle (simplified animation)
+            izba.legAngle += 0.05 * izba.legDirection;
+            if (Math.abs(izba.legAngle) > 0.3) {
                 izba.legDirection *= -1;
             }
             
-            // Draw legs
+            // Draw legs (simplified)
             ctx.save();
             ctx.translate(izba.x + izba.width/2, izba.y + izba.height);
             
-            // Front legs
-            izba.legs[0].angle = izba.legAngle;
-            izba.legs[1].angle = -izba.legAngle;
-            
-            // Back legs
-            izba.legs[2].angle = -izba.legAngle;
-            izba.legs[3].angle = izba.legAngle;
-            
-            for (let i = 0; i < izba.legs.length; i++) {
-                const leg = izba.legs[i];
-                const legX = (i < 2 ? -15 : 15) * (i % 2 === 0 ? 1 : -1);
+            for (let i = 0; i < 4; i++) {
+                const angle = izba.legAngle * (i % 2 === 0 ? 1 : -1) * (i < 2 ? 1 : -1);
+                const legX = (i < 2 ? -1 : 1) * izba.width * 0.2 * (i % 2 === 0 ? 1 : -1);
                 
                 ctx.beginPath();
                 ctx.moveTo(legX, 0);
                 ctx.lineTo(
-                    legX + Math.sin(leg.angle) * leg.length,
-                    leg.length * Math.cos(leg.angle)
+                    legX + Math.sin(angle) * izba.width * 0.3,
+                    izba.width * 0.3 * Math.cos(angle)
                 );
-                ctx.lineWidth = 5;
+                ctx.lineWidth = izba.width * 0.05;
                 ctx.strokeStyle = '#8B4513';
                 ctx.stroke();
             }
@@ -195,29 +236,30 @@
             // Draw roof
             ctx.fillStyle = '#5a3e2b';
             ctx.beginPath();
-            ctx.moveTo(izba.x - 5, izba.y);
-            ctx.lineTo(izba.x + izba.width/2, izba.y - 20);
-            ctx.lineTo(izba.x + izba.width + 5, izba.y);
+            ctx.moveTo(izba.x - izba.width * 0.05, izba.y);
+            ctx.lineTo(izba.x + izba.width/2, izba.y - izba.height * 0.3);
+            ctx.lineTo(izba.x + izba.width + izba.width * 0.05, izba.y);
             ctx.closePath();
             ctx.fill();
             
             // Draw window
             ctx.fillStyle = '#FFD700';
-            ctx.fillRect(izba.x + 15, izba.y + 15, 30, 20);
+            ctx.fillRect(
+                izba.x + izba.width * 0.2, 
+                izba.y + izba.height * 0.2, 
+                izba.width * 0.6, 
+                izba.height * 0.3
+            );
             
             // Draw window cross
             ctx.strokeStyle = '#8B4513';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = izba.width * 0.02;
             ctx.beginPath();
-            ctx.moveTo(izba.x + 15, izba.y + 25);
-            ctx.lineTo(izba.x + 45, izba.y + 25);
-            ctx.moveTo(izba.x + 30, izba.y + 15);
-            ctx.lineTo(izba.x + 30, izba.y + 35);
+            ctx.moveTo(izba.x + izba.width * 0.2, izba.y + izba.height * 0.35);
+            ctx.lineTo(izba.x + izba.width * 0.8, izba.y + izba.height * 0.35);
+            ctx.moveTo(izba.x + izba.width * 0.5, izba.y + izba.height * 0.2);
+            ctx.lineTo(izba.x + izba.width * 0.5, izba.y + izba.height * 0.5);
             ctx.stroke();
-            
-            // Draw door
-            ctx.fillStyle = '#5a3e2b';
-            ctx.fillRect(izba.x + 25, izba.y + 35, 10, 15);
         }
         
         function drawPipes() {
@@ -229,17 +271,17 @@
                 ctx.fillRect(pipe.x, 0, pipeWidth, pipe.topHeight);
                 ctx.fillRect(pipe.x, pipe.bottomY, pipeWidth, canvas.height - pipe.bottomY);
                 
-                // Draw pipe edges
+                // Draw pipe edges (simplified)
                 ctx.fillStyle = '#3a2e1b';
-                ctx.fillRect(pipe.x - 5, pipe.topHeight - 20, pipeWidth + 10, 20);
-                ctx.fillRect(pipe.x - 5, pipe.bottomY, pipeWidth + 10, 20);
+                ctx.fillRect(pipe.x, pipe.topHeight - izba.height * 0.3, pipeWidth, izba.height * 0.3);
+                ctx.fillRect(pipe.x, pipe.bottomY, pipeWidth, izba.height * 0.3);
                 
                 // Draw letter if not collected
                 if (!pipe.letterCollected) {
                     ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '30px Arial';
+                    ctx.font = `bold ${izba.height * 0.5}px Arial`;
                     ctx.textAlign = 'center';
-                    ctx.fillText(pipe.letter, pipe.x + pipeWidth/2, pipe.topHeight + pipeGap/2 + 10);
+                    ctx.fillText(pipe.letter, pipe.x + pipeWidth/2, pipe.topHeight + pipeGap/2 + izba.height * 0.2);
                 }
             }
         }
@@ -252,9 +294,9 @@
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Draw stars
+            // Draw stars (simplified)
             ctx.fillStyle = 'white';
-            for (let i = 0; i < 50; i++) {
+            for (let i = 0; i < 30; i++) {
                 const x = Math.random() * canvas.width;
                 const y = Math.random() * canvas.height * 0.5;
                 const size = Math.random() * 2;
@@ -274,7 +316,7 @@
                     tree.height/2
                 );
                 
-                // Draw foliage
+                // Draw foliage (simplified triangle)
                 ctx.beginPath();
                 ctx.moveTo(tree.x, tree.y);
                 ctx.lineTo(tree.x - tree.width/2, tree.y + tree.height/2);
@@ -286,9 +328,9 @@
         
         function drawScore() {
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = '24px Arial';
+            ctx.font = `bold ${canvas.width * 0.05}px Arial`;
             ctx.textAlign = 'left';
-            ctx.fillText(`Собрано: ${collectedLetters.join('')}`, 20, 30);
+            ctx.fillText(`Собрано: ${collectedLetters.join('')}`, canvas.width * 0.05, canvas.height * 0.08);
         }
         
         function updateIzba() {
@@ -312,7 +354,7 @@
                 addPipe();
                 pipeTimer = pipeInterval;
             } else {
-                pipeTimer -= 16; // Assuming 60fps (16ms per frame)
+                pipeTimer -= 16; // Assuming ~60fps
             }
             
             // Move pipes and check collisions
@@ -326,17 +368,19 @@
                     continue;
                 }
                 
-                // Check collision with izba
-                if (
-                    izba.x + izba.width > pipe.x && 
-                    izba.x < pipe.x + pipeWidth && 
-                    (izba.y < pipe.topHeight || izba.y + izba.height > pipe.bottomY)
-                ) {
-                    endGame();
+                // Check collision with izba (simplified)
+                const izbaRight = izba.x + izba.width;
+                const izbaBottom = izba.y + izba.height;
+                const pipeRight = pipe.x + pipeWidth;
+                
+                if (izbaRight > pipe.x && izba.x < pipeRight) {
+                    if (izba.y < pipe.topHeight || izbaBottom > pipe.bottomY) {
+                        endGame();
+                    }
                 }
                 
                 // Check if izba passed the pipe (score point)
-                if (!pipe.passed && izba.x > pipe.x + pipeWidth) {
+                if (!pipe.passed && izba.x > pipeRight) {
                     pipe.passed = true;
                     if (!pipe.letterCollected) {
                         pipe.letterCollected = true;
@@ -348,7 +392,9 @@
         }
         
         function addPipe() {
-            const topHeight = 100 + Math.random() * (canvas.height - 300);
+            const minHeight = canvas.height * 0.15;
+            const maxHeight = canvas.height * 0.6;
+            const topHeight = minHeight + Math.random() * (maxHeight - minHeight);
             const bottomY = topHeight + pipeGap;
             
             // Determine which letter to show
@@ -372,6 +418,11 @@
         function animate(timestamp) {
             if (!gameRunning) return;
             
+            // Calculate delta time for smoother animation
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+            frameCount++;
+            
             // Clear canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
@@ -390,19 +441,33 @@
         startButton.addEventListener('click', startGame);
         restartButton.addEventListener('click', startGame);
         
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && gameRunning) {
+        // Touch controls for mobile
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameRunning) {
                 jump();
+            } else {
+                startGame();
             }
         });
         
+        // Click/tap controls
         canvas.addEventListener('click', () => {
             if (gameRunning) {
                 jump();
             }
         });
         
-        // Preload assets or do any initialization here
+        // Keyboard controls (for testing on desktop)
+        document.addEventListener('keydown', (e) => {
+            if ((e.code === 'Space' || e.key === 'ArrowUp') && gameRunning) {
+                jump();
+            }
+        });
+        
+        // Initialize game elements
+        initIzba();
+        initTrees();
     </script>
 </body>
 </html>
