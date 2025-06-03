@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Flappy Izba</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            position: relative;
+        }
+        #game-canvas {
+            border: 4px solid #5a3e2b;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            background-color: #1a2a1a;
+        }
+        #start-screen, #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+        }
+        #game-over {
+            display: none;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #5a3e2b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #7a5e4b;
+        }
+        h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px #000;
+        }
+        p {
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas" width="400" height="600"></canvas>
+        <div id="start-screen">
+            <h1>Flappy Izba</h1>
+            <p>Управляйте избушкой на курьих ножках<br>и собирайте послание!</p>
+            <button id="start-button">Начать игру</button>
+        </div>
+        <div id="game-over">
+            <h1>Игра окончена!</h1>
+            <p id="score-text">Вы собрали: 0 букв</p>
+            <button id="restart-button">Играть снова</button>
+        </div>
+    </div>
+
+    <script>
+        // Game variables
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over');
+        const startButton = document.getElementById('start-button');
+        const restartButton = document.getElementById('restart-button');
+        const scoreText = document.getElementById('score-text');
+        
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let highScore = 0;
+        const message = "жду вас по адресу";
+        let collectedLetters = [];
+        
+        // Izba (player) properties
+        const izba = {
+            x: 100,
+            y: 300,
+            width: 60,
+            height: 50,
+            velocity: 0,
+            gravity: 0.5,
+            jumpStrength: -10,
+            legs: [
+                {x: 0, y: 0, length: 20, angle: 0},
+                {x: 0, y: 0, length: 20, angle: 0},
+                {x: 0, y: 0, length: 20, angle: 0},
+                {x: 0, y: 0, length: 20, angle: 0}
+            ],
+            legAngle: 0,
+            legDirection: 1
+        };
+        
+        // Pipes properties
+        const pipes = [];
+        const pipeWidth = 80;
+        const pipeGap = 150;
+        const pipeSpeed = 2;
+        let pipeTimer = 0;
+        const pipeInterval = 1500;
+        
+        // Background elements
+        const trees = [];
+        for (let i = 0; i < 20; i++) {
+            trees.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                width: 30 + Math.random() * 50,
+                height: 80 + Math.random() * 120,
+                dark: Math.random() > 0.5
+            });
+        }
+        
+        // Game functions
+        function startGame() {
+            gameRunning = true;
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            score = 0;
+            collectedLetters = [];
+            pipes.length = 0;
+            izba.y = 300;
+            izba.velocity = 0;
+            pipeTimer = 0;
+            animate();
+        }
+        
+        function endGame() {
+            gameRunning = false;
+            scoreText.textContent = `Вы собрали: ${collectedLetters.join('')}`;
+            gameOverScreen.style.display = 'flex';
+        }
+        
+        function drawIzba() {
+            // Update leg angles
+            izba.legAngle += 0.1 * izba.legDirection;
+            if (Math.abs(izba.legAngle) > 0.5) {
+                izba.legDirection *= -1;
+            }
+            
+            // Draw legs
+            ctx.save();
+            ctx.translate(izba.x + izba.width/2, izba.y + izba.height);
+            
+            // Front legs
+            izba.legs[0].angle = izba.legAngle;
+            izba.legs[1].angle = -izba.legAngle;
+            
+            // Back legs
+            izba.legs[2].angle = -izba.legAngle;
+            izba.legs[3].angle = izba.legAngle;
+            
+            for (let i = 0; i < izba.legs.length; i++) {
+                const leg = izba.legs[i];
+                const legX = (i < 2 ? -15 : 15) * (i % 2 === 0 ? 1 : -1);
+                
+                ctx.beginPath();
+                ctx.moveTo(legX, 0);
+                ctx.lineTo(
+                    legX + Math.sin(leg.angle) * leg.length,
+                    leg.length * Math.cos(leg.angle)
+                );
+                ctx.lineWidth = 5;
+                ctx.strokeStyle = '#8B4513';
+                ctx.stroke();
+            }
+            ctx.restore();
+            
+            // Draw izba body
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(izba.x, izba.y, izba.width, izba.height);
+            
+            // Draw roof
+            ctx.fillStyle = '#5a3e2b';
+            ctx.beginPath();
+            ctx.moveTo(izba.x - 5, izba.y);
+            ctx.lineTo(izba.x + izba.width/2, izba.y - 20);
+            ctx.lineTo(izba.x + izba.width + 5, izba.y);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Draw window
+            ctx.fillStyle = '#FFD700';
+            ctx.fillRect(izba.x + 15, izba.y + 15, 30, 20);
+            
+            // Draw window cross
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(izba.x + 15, izba.y + 25);
+            ctx.lineTo(izba.x + 45, izba.y + 25);
+            ctx.moveTo(izba.x + 30, izba.y + 15);
+            ctx.lineTo(izba.x + 30, izba.y + 35);
+            ctx.stroke();
+            
+            // Draw door
+            ctx.fillStyle = '#5a3e2b';
+            ctx.fillRect(izba.x + 25, izba.y + 35, 10, 15);
+        }
+        
+        function drawPipes() {
+            for (let i = 0; i < pipes.length; i++) {
+                const pipe = pipes[i];
+                
+                // Draw pipe
+                ctx.fillStyle = '#5a3e2b';
+                ctx.fillRect(pipe.x, 0, pipeWidth, pipe.topHeight);
+                ctx.fillRect(pipe.x, pipe.bottomY, pipeWidth, canvas.height - pipe.bottomY);
+                
+                // Draw pipe edges
+                ctx.fillStyle = '#3a2e1b';
+                ctx.fillRect(pipe.x - 5, pipe.topHeight - 20, pipeWidth + 10, 20);
+                ctx.fillRect(pipe.x - 5, pipe.bottomY, pipeWidth + 10, 20);
+                
+                // Draw letter if not collected
+                if (!pipe.letterCollected) {
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.font = '30px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(pipe.letter, pipe.x + pipeWidth/2, pipe.topHeight + pipeGap/2 + 10);
+                }
+            }
+        }
+        
+        function drawBackground() {
+            // Draw gradient sky
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#0a1a0a');
+            gradient.addColorStop(1, '#1a2a1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw stars
+            ctx.fillStyle = 'white';
+            for (let i = 0; i < 50; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height * 0.5;
+                const size = Math.random() * 2;
+                ctx.fillRect(x, y, size, size);
+            }
+            
+            // Draw trees
+            for (let i = 0; i < trees.length; i++) {
+                const tree = trees[i];
+                ctx.fillStyle = tree.dark ? '#0a300a' : '#1a501a';
+                
+                // Draw trunk
+                ctx.fillRect(
+                    tree.x - tree.width/6, 
+                    tree.y + tree.height/2, 
+                    tree.width/3, 
+                    tree.height/2
+                );
+                
+                // Draw foliage
+                ctx.beginPath();
+                ctx.moveTo(tree.x, tree.y);
+                ctx.lineTo(tree.x - tree.width/2, tree.y + tree.height/2);
+                ctx.lineTo(tree.x + tree.width/2, tree.y + tree.height/2);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+        
+        function drawScore() {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Собрано: ${collectedLetters.join('')}`, 20, 30);
+        }
+        
+        function updateIzba() {
+            izba.velocity += izba.gravity;
+            izba.y += izba.velocity;
+            
+            // Check boundaries
+            if (izba.y < 0) {
+                izba.y = 0;
+                izba.velocity = 0;
+            }
+            
+            if (izba.y + izba.height > canvas.height) {
+                endGame();
+            }
+        }
+        
+        function updatePipes(timestamp) {
+            // Add new pipes
+            if (pipeTimer <= 0) {
+                addPipe();
+                pipeTimer = pipeInterval;
+            } else {
+                pipeTimer -= 16; // Assuming 60fps (16ms per frame)
+            }
+            
+            // Move pipes and check collisions
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                const pipe = pipes[i];
+                pipe.x -= pipeSpeed;
+                
+                // Check if pipe is off screen
+                if (pipe.x + pipeWidth < 0) {
+                    pipes.splice(i, 1);
+                    continue;
+                }
+                
+                // Check collision with izba
+                if (
+                    izba.x + izba.width > pipe.x && 
+                    izba.x < pipe.x + pipeWidth && 
+                    (izba.y < pipe.topHeight || izba.y + izba.height > pipe.bottomY)
+                ) {
+                    endGame();
+                }
+                
+                // Check if izba passed the pipe (score point)
+                if (!pipe.passed && izba.x > pipe.x + pipeWidth) {
+                    pipe.passed = true;
+                    if (!pipe.letterCollected) {
+                        pipe.letterCollected = true;
+                        collectedLetters.push(pipe.letter);
+                        score++;
+                    }
+                }
+            }
+        }
+        
+        function addPipe() {
+            const topHeight = 100 + Math.random() * (canvas.height - 300);
+            const bottomY = topHeight + pipeGap;
+            
+            // Determine which letter to show
+            const letterIndex = pipes.length % message.length;
+            const letter = message[letterIndex];
+            
+            pipes.push({
+                x: canvas.width,
+                topHeight: topHeight,
+                bottomY: bottomY,
+                passed: false,
+                letter: letter,
+                letterCollected: false
+            });
+        }
+        
+        function jump() {
+            izba.velocity = izba.jumpStrength;
+        }
+        
+        function animate(timestamp) {
+            if (!gameRunning) return;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw and update game elements
+            drawBackground();
+            updatePipes(timestamp);
+            drawPipes();
+            updateIzba();
+            drawIzba();
+            drawScore();
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Event listeners
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', startGame);
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && gameRunning) {
+                jump();
+            }
+        });
+        
+        canvas.addEventListener('click', () => {
+            if (gameRunning) {
+                jump();
+            }
+        });
+        
+        // Preload assets or do any initialization here
+    </script>
+</body>
+</html>
